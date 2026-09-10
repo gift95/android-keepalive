@@ -179,10 +179,7 @@ class KeepAliveAccessibilityService : AccessibilityService() {
          * system settings. Used by the UI to prompt the user to enable it.
          */
         fun isServiceEnabled(context: Context): Boolean {
-            val am = context.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager
-                ?: return false
-            val enabled = am.runningServices.size
-            // Use Settings to confirm our specific service is enabled.
+            // Check the system accessibility setting to confirm our service is enabled.
             val service = "${context.packageName}/${KeepAliveAccessibilityService::class.java.name}"
             val settingValue = android.provider.Settings.Secure.getString(
                 context.contentResolver,

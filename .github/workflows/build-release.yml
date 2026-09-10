@@ -27,23 +27,40 @@ jobs:
     name: Build signed APK & publish release
     runs-on: ubuntu-latest
 
+    env:
+      # Use the Android SDK preinstalled on the ubuntu runner image
+      ANDROID_HOME: /usr/local/lib/android/sdk
+      ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Set up JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
-        with:
-          packages: 'platforms;android-34 build-tools;34.0.0'
-
-      - name: Setup Gradle
+      - name: Setup Gradle 8.5
         uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-version: '8.5'
+
+      - name: Ensure Android SDK components
+        run: |
+          set -e
+          # Accept all SDK licenses (suppress noisy output)
+          yes | sdkmanager --licenses > /dev/null 2>&1 || true
+          # Install compileSdk target platform and matching build-tools if missing
+          sdkmanager --install "platforms;android-34" "build-tools;34.0.0" "platform-tools" 2>&1 | tail -5
+          # Verify
+          ls "$ANDROID_HOME/platforms" | grep android-34 || { echo "ERROR: android-34 platform not found"; exit 1; }
+
+      - name: Generate local.properties
+        run: |
+          echo "sdk.dir=$ANDROID_HOME" > local.properties
+          cat local.properties
 
       # Determine the release tag: from the pushed git ref, or from the manual input.
       - name: Resolve release tag
@@ -110,11 +127,10 @@ jobs:
           EOF
 
       - name: Build release APK
-        run: ./gradlew assembleRelease --no-daemon --stacktrace
+        run: gradle assembleRelease --no-daemon --stacktrace
 
-      # Also produce a debug APK for users who just want a quick test build.
       - name: Build debug APK
-        run: ./gradlew assembleDebug --no-daemon
+        run: gradle assembleDebug --no-daemon
 
       - name: Rename APKs with version tag
         run: |
@@ -131,7 +147,6 @@ jobs:
           path: artifacts/*.apk
           if-no-files-found: error
 
-      # For manual dispatch, create the tag first (pushed ref already exists for tag trigger).
       - name: Create tag (manual dispatch only)
         if: github.event_name == 'workflow_dispatch'
         run: |
