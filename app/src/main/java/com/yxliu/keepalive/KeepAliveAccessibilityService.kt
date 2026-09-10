@@ -1,4 +1,4 @@
-package com.example.keepalive
+package com.yxliu.keepalive
 
 import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.AccessibilityServiceInfo

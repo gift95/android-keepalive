@@ -1,4 +1,4 @@
-package com.example.keepalive
+package com.yxliu.keepalive
 
 import android.app.Notification
 import android.app.NotificationChannel
@@ -93,8 +93,8 @@ class KeepAliveForegroundService : Service() {
         private const val NOTIFICATION_ID = 1001
         private const val CHANNEL_ID = "keep_alive_channel"
 
-        const val ACTION_STOP = "com.example.keepalive.action.STOP"
-        const val ACTION_RESTART_ACCESSIBILITY = "com.example.keepalive.action.RESTART_A11Y"
+        const val ACTION_STOP = "com.yxliu.keepalive.action.STOP"
+        const val ACTION_RESTART_ACCESSIBILITY = "com.yxliu.keepalive.action.RESTART_A11Y"
 
         fun start(context: Context) {
             val intent = Intent(context, KeepAliveForegroundService::class.java)

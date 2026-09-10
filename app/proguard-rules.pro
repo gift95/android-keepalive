@@ -1,2 +1,2 @@
 # KeepAlive proguard rules
--keep class com.example.keepalive.** { *; }
+-keep class com.yxliu.keepalive.** { *; }

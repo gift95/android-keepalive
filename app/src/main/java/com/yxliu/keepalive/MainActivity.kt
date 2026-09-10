@@ -1,4 +1,4 @@
-package com.example.keepalive
+package com.yxliu.keepalive
 
 import android.Manifest
 import android.accessibilityservice.AccessibilityServiceInfo
@@ -17,7 +17,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.recyclerview.widget.LinearLayoutManager
-import com.example.keepalive.databinding.ActivityMainBinding
+import com.yxliu.keepalive.databinding.ActivityMainBinding
 
 /**
  * Main screen for the KeepAlive app.

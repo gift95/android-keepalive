@@ -1,4 +1,4 @@
-package com.example.keepalive
+package com.yxliu.keepalive
 
 import android.content.Context
 import android.content.SharedPreferences

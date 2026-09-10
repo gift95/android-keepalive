@@ -12,11 +12,11 @@ if (keystorePropertiesFile.exists()) {
 }
 
 android {
-    namespace 'com.example.keepalive'
+    namespace 'com.yxliu.keepalive'
     compileSdk 34
 
     defaultConfig {
-        applicationId "com.example.keepalive"
+        applicationId "com.yxliu.keepalive"
         minSdk 26
         targetSdk 34
         versionCode 1

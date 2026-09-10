@@ -1,4 +1,4 @@
-package com.example.keepalive
+package com.yxliu.keepalive
 
 import android.content.BroadcastReceiver
 import android.content.Context
