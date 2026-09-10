@@ -11,6 +11,12 @@ if (keystorePropertiesFile.exists()) {
     keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
 }
 
+// Version is injected by CI from the release tag (vX.Y.Z) when RELEASE_VERSION_*
+// is set (see .github/workflows/build-release.yml). Local builds fall back to the
+// hardcoded defaults below, so keep them in sync with the last released tag.
+def releaseVersionName = System.getenv("RELEASE_VERSION_NAME") ?: "1.0.5"
+def releaseVersionCode = (System.getenv("RELEASE_VERSION_CODE") ?: "5").toInteger()
+
 android {
     namespace 'com.yxliu.keepalive'
     compileSdk 34
@@ -19,8 +25,8 @@ android {
         applicationId "com.yxliu.keepalive"
         minSdk 26
         targetSdk 34
-        versionCode 5
-        versionName "1.0.5"
+        versionCode releaseVersionCode
+        versionName releaseVersionName
     }
 
     signingConfigs {

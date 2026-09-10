@@ -74,6 +74,18 @@ jobs:
             echo "is_prerelease=false" >> "$GITHUB_OUTPUT"
           fi
 
+      # Derive the app version from the release tag so versionName/versionCode are
+      # always in sync with the tag (v1.0.6 -> versionName "1.0.6", versionCode 106).
+      - name: Export version from tag
+        id: version
+        run: |
+          VER="${{ steps.tag.outputs.tag }}"
+          VER="${VER#v}"                          # strip leading 'v' (v1.0.6 -> 1.0.6)
+          CODE=$(echo "$VER" | tr -d '.')         # 1.0.6 -> 106
+          echo "name=$VER" >> "$GITHUB_OUTPUT"
+          echo "code=$CODE" >> "$GITHUB_OUTPUT"
+          echo "Injecting versionName=$VER, versionCode=$CODE"
+
       # ---------------------------------------------------------------------
       # Signing keystore.
       # Preferred: store a stable keystore in GitHub secrets so app updates
@@ -127,9 +139,15 @@ jobs:
           EOF
 
       - name: Build release APK
+        env:
+          RELEASE_VERSION_NAME: ${{ steps.version.outputs.name }}
+          RELEASE_VERSION_CODE: ${{ steps.version.outputs.code }}
         run: gradle assembleRelease --no-daemon --stacktrace
 
       - name: Build debug APK
+        env:
+          RELEASE_VERSION_NAME: ${{ steps.version.outputs.name }}
+          RELEASE_VERSION_CODE: ${{ steps.version.outputs.code }}
         run: gradle assembleDebug --no-daemon
 
       - name: Rename APKs with version tag
