@@ -6,17 +6,27 @@ import android.view.ViewGroup
 import android.widget.CheckBox
 import android.widget.ImageView
 import android.widget.TextView
-import androidx.recyclerview.widget.DiffUtil
-import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
 
 /**
  * RecyclerView adapter that displays installed apps with a checkbox for selecting
  * which apps to keep alive.
+ *
+ * Uses a plain [ArrayList] + [notifyDataSetChanged] instead of ListAdapter/DiffUtil
+ * because the list lives inside a ScrollView where async DiffUtil updates can race
+ * with the first layout pass and leave only a few rows visible.
  */
 class AppListAdapter(
     private val onCheckedChange: (AppInfo, Boolean) -> Unit
-) : ListAdapter<AppInfo, AppListAdapter.AppViewHolder>(DIFF) {
+) : RecyclerView.Adapter<AppListAdapter.AppViewHolder>() {
+
+    private val items = ArrayList<AppInfo>()
+
+    fun submitList(list: List<AppInfo>) {
+        items.clear()
+        items.addAll(list)
+        notifyDataSetChanged()
+    }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): AppViewHolder {
         val view = LayoutInflater.from(parent.context)
@@ -25,8 +35,10 @@ class AppListAdapter(
     }
 
     override fun onBindViewHolder(holder: AppViewHolder, position: Int) {
-        holder.bind(getItem(position))
+        holder.bind(items[position])
     }
+
+    override fun getItemCount(): Int = items.size
 
     inner class AppViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
         private val icon: ImageView = itemView.findViewById(R.id.iv_app_icon)
@@ -49,16 +61,6 @@ class AppListAdapter(
 
             // Tap anywhere on the row toggles the checkbox.
             itemView.setOnClickListener { check.isChecked = !check.isChecked }
-        }
-    }
-
-    companion object {
-        private val DIFF = object : DiffUtil.ItemCallback<AppInfo>() {
-            override fun areItemsTheSame(oldItem: AppInfo, newItem: AppInfo) =
-                oldItem.packageName == newItem.packageName
-
-            override fun areContentsTheSame(oldItem: AppInfo, newItem: AppInfo) =
-                oldItem == newItem
         }
     }
 }
