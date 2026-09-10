@@ -30,7 +30,10 @@ import android.widget.Toast
 class KeepAliveAccessibilityService : AccessibilityService() {
 
     private val handler = Handler(Looper.getMainLooper())
-    private val restartCounts = mutableMapOf<String, Int>()
+    // Elapsed-realtime timestamp until which a package is not restarted again
+    // (set only after an actual restart failure, so a package is never blocked
+    // forever: the cooldown expires and we simply try again).
+    private val restartCooldownUntil = mutableMapOf<String, Long>()
     private var lastCheckElapsed: Long = 0L
 
     private val checkRunnable = object : Runnable {
@@ -118,7 +121,17 @@ class KeepAliveAccessibilityService : AccessibilityService() {
                 continue
             }
             if (!runningPackages.contains(pkg)) {
-                restartApp(pkg)
+                // Skip packages currently in a restart cooldown (recent failure) to
+                // avoid hammering the system, but never give up on them permanently.
+                if (SystemClock.elapsedRealtime() < (restartCooldownUntil[pkg] ?: 0L)) {
+                    continue
+                }
+                val ok = restartApp(pkg)
+                if (ok) {
+                    restartCooldownUntil.remove(pkg)
+                } else {
+                    restartCooldownUntil[pkg] = SystemClock.elapsedRealtime() + RESTART_COOLDOWN_MS
+                }
             }
         }
     }
@@ -126,32 +139,36 @@ class KeepAliveAccessibilityService : AccessibilityService() {
     private fun getRunningPackages(): Set<String> {
         val am = getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager ?: return emptySet()
         val processes = am.runningAppProcesses ?: return emptySet()
-        return processes.mapNotNull { it.processName?.substringBefore(':') }.toSet()
+        // Treat cached processes as dead: they are just a leftover shell scheduled for
+        // reaping, so they should not prevent the keep-alive from restarting the app.
+        return processes
+            .filter { it.importance < ActivityManager.RunningAppProcessInfo.IMPORTANCE_CACHED }
+            .mapNotNull { it.processName?.substringBefore(':') }
+            .toSet()
     }
 
-    private fun restartApp(packageName: String) {
-        val attempt = (restartCounts[packageName] ?: 0) + 1
-        restartCounts[packageName] = attempt
-        if (attempt > MAX_RESTART_ATTEMPTS) {
-            // Give up after repeated failures to avoid hammering the system.
-            Log.w(TAG, "Max restart attempts reached for $packageName, skipping")
-            return
-        }
-
+    /**
+     * Restarts [packageName] via its launch intent. Returns true only when the
+     * launch was issued successfully; returns false (and the caller applies a
+     * cooldown) when the package has no launch intent or the system refused.
+     */
+    private fun restartApp(packageName: String): Boolean {
         try {
             val intent = packageManager.getLaunchIntentForPackage(packageName)
             if (intent == null) {
                 Log.w(TAG, "No launch intent for $packageName; cannot restart")
-                return
+                return false
             }
             intent.addFlags(
                 Intent.FLAG_ACTIVITY_NEW_TASK or
                     Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED
             )
             startActivity(intent)
-            Log.i(TAG, "Restarted target package: $packageName (attempt $attempt)")
+            Log.i(TAG, "Restarted target package: $packageName")
+            return true
         } catch (e: Exception) {
             Log.e(TAG, "Failed to restart $packageName", e)
+            return false
         }
     }
 
@@ -172,7 +189,8 @@ class KeepAliveAccessibilityService : AccessibilityService() {
         private const val TAG = "KeepA11y"
         private const val CHECK_INTERVAL_MS = 15_000L
         private const val MIN_CHECK_GAP_MS = 5_000L
-        private const val MAX_RESTART_ATTEMPTS = 5
+        // Cooldown after a failed restart before we try the same package again.
+        private const val RESTART_COOLDOWN_MS = 5 * 60_000L
 
         /**
          * Convenience helper to check whether the accessibility service is enabled in
