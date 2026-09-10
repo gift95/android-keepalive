@@ -1,0 +1,152 @@
+name: Build & Release APK
+
+# Triggers:
+#   1. Push a tag matching v* (e.g. v1.0.0) -> builds and creates a GitHub Release
+#   2. Manual dispatch from the Actions tab -> specify a tag name
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag name (e.g. v1.0.0)'
+        required: true
+        default: 'v1.0.0'
+      prerelease:
+        description: 'Mark as pre-release'
+        type: boolean
+        default: false
+
+# Permissions required to create a release and push the tag (manual dispatch path)
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build signed APK & publish release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: 'platforms;android-34 build-tools;34.0.0'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
+
+      # Determine the release tag: from the pushed git ref, or from the manual input.
+      - name: Resolve release tag
+        id: tag
+        run: |
+          if [ -n "${{ github.event.inputs.tag }}" ]; then
+            echo "tag=${{ github.event.inputs.tag }}" >> "$GITHUB_OUTPUT"
+            echo "is_prerelease=${{ github.event.inputs.prerelease }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
+            echo "is_prerelease=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      # ---------------------------------------------------------------------
+      # Signing keystore.
+      # Preferred: store a stable keystore in GitHub secrets so app updates
+      # can be installed over the previous version (same signature).
+      #   secrets.ANDROID_KEYSTORE        base64-encoded .jks/.keystore file
+      #   secrets.ANDROID_KEYSTORE_PASSWORD
+      #   secrets.ANDROID_KEY_ALIAS
+      #   secrets.ANDROID_KEY_PASSWORD
+      #
+      # Fallback: if no secret is provided, generate a fresh keystore in-run.
+      # This produces a valid signed APK, but installing an update requires
+      # uninstalling first because the key changes every build.
+      # ---------------------------------------------------------------------
+      - name: Prepare signing keystore
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          KEYSTORE_PATH="$HOME/keepalive.jks"
+          if [ -n "$KEYSTORE_BASE64" ]; then
+            echo "Using keystore from repository secrets."
+            echo "$KEYSTORE_BASE64" | base64 -d > "$KEYSTORE_PATH"
+            STORE_PASS="$KEYSTORE_PASSWORD"
+            ALIAS="$KEY_ALIAS"
+            KEY_PASS="$KEY_PASSWORD"
+          else
+            echo "No keystore secret found; generating a new one for this run."
+            STORE_PASS="keepalive"
+            ALIAS="keepalive"
+            KEY_PASS="keepalive"
+            keytool -genkeypair \
+              -keystore "$KEYSTORE_PATH" \
+              -storepass "$STORE_PASS" \
+              -alias "$ALIAS" \
+              -keypass "$KEY_PASS" \
+              -keyalg RSA \
+              -keysize 2048 \
+              -validity 10000 \
+              -dname "CN=KeepAlive, OU=Dev, O=KeepAlive, L=NA, ST=NA, C=CN"
+          fi
+
+          # keystore.properties is read by app/build.gradle signingConfigs.release
+          cat > "$GITHUB_WORKSPACE/keystore.properties" <<EOF
+          storeFile=$KEYSTORE_PATH
+          storePassword=$STORE_PASS
+          keyAlias=$ALIAS
+          keyPassword=$KEY_PASS
+          EOF
+
+      - name: Build release APK
+        run: ./gradlew assembleRelease --no-daemon --stacktrace
+
+      # Also produce a debug APK for users who just want a quick test build.
+      - name: Build debug APK
+        run: ./gradlew assembleDebug --no-daemon
+
+      - name: Rename APKs with version tag
+        run: |
+          mkdir -p artifacts
+          TAG="${{ steps.tag.outputs.tag }}"
+          cp app/build/outputs/apk/release/app-release.apk "artifacts/KeepAlive-${TAG}.apk"
+          cp app/build/outputs/apk/debug/app-debug.apk "artifacts/KeepAlive-${TAG}-debug.apk"
+          ls -lh artifacts/
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: KeepAlive-apk
+          path: artifacts/*.apk
+          if-no-files-found: error
+
+      # For manual dispatch, create the tag first (pushed ref already exists for tag trigger).
+      - name: Create tag (manual dispatch only)
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag "${{ steps.tag.outputs.tag }}" "$GITHUB_SHA"
+          git push origin "${{ steps.tag.outputs.tag }}"
+
+      - name: Create GitHub Release and upload APK
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tag.outputs.tag }}
+          name: KeepAlive ${{ steps.tag.outputs.tag }}
+          prerelease: ${{ steps.tag.outputs.is_prerelease == 'true' }}
+          generate_release_notes: true
+          files: |
+            artifacts/KeepAlive-${{ steps.tag.outputs.tag }}.apk
+            artifacts/KeepAlive-${{ steps.tag.outputs.tag }}-debug.apk
