@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Shield outline representing protection -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M54,28 L78,38 L78,58 C78,72 68,80 54,84 C40,80 30,72 30,58 L30,38 Z" />
+    <!-- Heart/pulse inside the shield -->
+    <path
+        android:fillColor="#1565C0"
+        android:pathData="M44,56 L50,56 L53,50 L57,62 L60,56 L66,56 L66,60 L60,60 L57,66 L53,54 L50,60 L44,60 Z" />
+</vector>

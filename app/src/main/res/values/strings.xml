@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">KeepAlive</string>
+
+    <!-- Sections -->
+    <string name="section_status">状态</string>
+    <string name="section_target_apps">目标应用（勾选需要保活的应用）</string>
+
+    <!-- Status text -->
+    <string name="status_idle">监控未运行</string>
+    <string name="status_monitoring">监控运行中</string>
+    <string name="accessibility_enabled">无障碍服务：已开启</string>
+    <string name="accessibility_disabled">无障碍服务：未开启</string>
+
+    <!-- Buttons -->
+    <string name="start_monitoring">启动监控</string>
+    <string name="stop_monitoring">停止监控</string>
+    <string name="open_accessibility_settings">打开无障碍设置</string>
+    <string name="request_battery_optimization">请求忽略电池优化</string>
+
+    <!-- Self-protection -->
+    <string name="keep_self_title">保活本应用</string>
+    <string name="keep_self_subtitle">让保活程序自身也保持运行</string>
+
+    <!-- Auto start on boot -->
+    <string name="auto_start_title">开机自动启动</string>
+    <string name="auto_start_subtitle">开机后自动恢复监控并重新勾选已保存的目标应用</string>
+
+    <!-- Toasts -->
+    <string name="toast_notification_denied">未授予通知权限，前台服务可能无法保持</string>
+    <string name="toast_enable_accessibility">请先在系统设置中开启无障碍服务</string>
+
+    <!-- App count -->
+    <string name="app_count_fmt">已安装可启动应用：%d 个</string>
+
+    <!-- Foreground service notification -->
+    <string name="channel_name">保活监控</string>
+    <string name="channel_description">用于保持目标应用运行的监控服务</string>
+    <string name="notification_text">保活服务正在运行，正在保护目标应用</string>
+
+    <!-- Accessibility service -->
+    <string name="accessibility_service_label">KeepAlive 保活服务</string>
+    <string name="accessibility_service_description">
+        监控并保活用户选择的应用。当目标应用被系统杀死时自动重启，保证其持续运行。
+    </string>
+</resources>
