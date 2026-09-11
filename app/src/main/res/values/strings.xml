@@ -28,7 +28,6 @@
 
     <!-- Toasts -->
     <string name="toast_notification_denied">未授予通知权限，前台服务可能无法保持</string>
-    <string name="toast_enable_accessibility">请先在系统设置中开启无障碍服务</string>
 
     <!-- App count -->
     <string name="app_count_fmt">已安装可启动应用：%d 个</string>

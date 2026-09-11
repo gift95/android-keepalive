@@ -114,12 +114,6 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        if (!KeepAliveAccessibilityService.isServiceEnabled(this)) {
-            Toast.makeText(this, R.string.toast_enable_accessibility, Toast.LENGTH_LONG).show()
-            val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
-            startActivity(intent)
-        }
-
         prefs.setMonitoringEnabled(true)
         KeepAliveForegroundService.start(this)
         refreshStatus()

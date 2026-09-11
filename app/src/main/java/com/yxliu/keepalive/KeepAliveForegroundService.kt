@@ -14,10 +14,11 @@ import android.os.Looper
 import android.util.Log
 
 /**
- * Foreground service that keeps the host process alive. Combined with the
- * accessibility service it forms a two-layer watchdog: this service ensures the
- * process persists in the foreground and the accessibility service ensures
- * target packages keep running.
+ * Foreground service. Two roles:
+ *  1. Keeps the host process alive when the user enables "keep self alive".
+ *  2. After device boot, restores the user-selected target apps: each package is
+ *     launched up to [MAX_RESTORE_ATTEMPTS] times (with a delay between tries),
+ *     then the service exits unless self-protection is enabled.
  */
 class KeepAliveForegroundService : Service() {
 
@@ -37,11 +38,16 @@ class KeepAliveForegroundService : Service() {
                 stopSelf()
                 return START_NOT_STICKY
             }
-            ACTION_RESTART_ACCESSIBILITY -> {
-                // The accessibility service was destroyed; request the system to
-                // re-enable it. We cannot directly start a bound accessibility service,
-                // but we can launch the host activity to remind the user / re-attach.
-                Log.i(TAG, "Received restart-accessibility request")
+            ACTION_BOOT_RESTORE -> {
+                restoreTargetsAfterBoot()
+                // If the user did not enable self-protection, exit once the restore
+                // attempt finishes; otherwise keep running as a foreground service.
+                if (!PreferenceHelper.getInstance(this).isKeepSelfAlive()) {
+                    handler.postDelayed({
+                        stopForeground(STOP_FOREGROUND_REMOVE)
+                        stopSelf()
+                    }, RESTORE_FINISH_GRACE_MS)
+                }
             }
         }
         return START_STICKY // system should restart us if killed
@@ -54,6 +60,59 @@ class KeepAliveForegroundService : Service() {
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
+
+    /**
+     * Attempts to launch every target package, up to [MAX_RESTORE_ATTEMPTS] tries
+     * per package with [RESTORE_RETRY_DELAY_MS] between tries. Runs on a background
+     * thread so the main thread is never blocked.
+     */
+    private fun restoreTargetsAfterBoot() {
+        val targets = PreferenceHelper.getInstance(this).getTargetPackages()
+        if (targets.isEmpty()) {
+            Log.i(TAG, "Boot restore: no target packages")
+            return
+        }
+        Thread {
+            for (pkg in targets) {
+                var launched = false
+                for (attempt in 1..MAX_RESTORE_ATTEMPTS) {
+                    if (launchPackage(pkg, attempt)) {
+                        launched = true
+                        break
+                    }
+                    try {
+                        Thread.sleep(RESTORE_RETRY_DELAY_MS)
+                    } catch (e: InterruptedException) {
+                        Thread.currentThread().interrupt()
+                        break
+                    }
+                }
+                if (!launched) {
+                    Log.w(TAG, "Boot restore: gave up on $pkg after $MAX_RESTORE_ATTEMPTS attempts")
+                }
+            }
+        }.start()
+    }
+
+    private fun launchPackage(packageName: String, attempt: Int): Boolean {
+        return try {
+            val intent = packageManager.getLaunchIntentForPackage(packageName)
+                ?: run {
+                    Log.w(TAG, "Boot restore: no launch intent for $packageName")
+                    return false
+                }
+            intent.addFlags(
+                Intent.FLAG_ACTIVITY_NEW_TASK or
+                    Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED
+            )
+            startActivity(intent)
+            Log.i(TAG, "Boot restore: launched $packageName (attempt $attempt)")
+            true
+        } catch (e: Exception) {
+            Log.e(TAG, "Boot restore: failed to launch $packageName", e)
+            false
+        }
+    }
 
     private fun buildNotification(): Notification {
         val intent = Intent(this, MainActivity::class.java).apply {
@@ -93,11 +152,32 @@ class KeepAliveForegroundService : Service() {
         private const val NOTIFICATION_ID = 1001
         private const val CHANNEL_ID = "keep_alive_channel"
 
+        // How many times each package is tried after boot, and the gap between tries.
+        const val MAX_RESTORE_ATTEMPTS = 3
+        private const val RESTORE_RETRY_DELAY_MS = 3_000L
+        // Grace period before the service shuts down after the restore attempt.
+        private const val RESTORE_FINISH_GRACE_MS = 2_000L
+
         const val ACTION_STOP = "com.yxliu.keepalive.action.STOP"
-        const val ACTION_RESTART_ACCESSIBILITY = "com.yxliu.keepalive.action.RESTART_A11Y"
+        const val ACTION_BOOT_RESTORE = "com.yxliu.keepalive.action.BOOT_RESTORE"
 
         fun start(context: Context) {
             val intent = Intent(context, KeepAliveForegroundService::class.java)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                context.startForegroundService(intent)
+            } else {
+                context.startService(intent)
+            }
+        }
+
+        /**
+         * Starts the boot-restore routine: launches every saved target package up to
+         * [MAX_RESTORE_ATTEMPTS] times. Called from [BootReceiver] after BOOT_COMPLETED.
+         */
+        fun startBootRestore(context: Context) {
+            val intent = Intent(context, KeepAliveForegroundService::class.java).apply {
+                action = ACTION_BOOT_RESTORE
+            }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 context.startForegroundService(intent)
             } else {
