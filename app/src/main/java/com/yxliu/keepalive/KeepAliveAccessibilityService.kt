@@ -30,10 +30,13 @@ import android.widget.Toast
 class KeepAliveAccessibilityService : AccessibilityService() {
 
     private val handler = Handler(Looper.getMainLooper())
-    // Elapsed-realtime timestamp until which a package is not restarted again
-    // (set only after an actual restart failure, so a package is never blocked
-    // forever: the cooldown expires and we simply try again).
+    // Elapsed-realtime timestamp until which a package is not restarted again.
+    // Set after (a) an actual restart failure, or (b) a restart that the system
+    // immediately killed again (vendor ROMs aggressively freeze such apps).
     private val restartCooldownUntil = mutableMapOf<String, Long>()
+    // When each package was last restarted successfully, used to detect restarts
+    // that did not "stick" (the process vanished again within the stability window).
+    private val lastRestartTime = mutableMapOf<String, Long>()
     private var lastCheckElapsed: Long = 0L
 
     private val checkRunnable = object : Runnable {
@@ -121,16 +124,34 @@ class KeepAliveAccessibilityService : AccessibilityService() {
                 continue
             }
             if (!runningPackages.contains(pkg)) {
-                // Skip packages currently in a restart cooldown (recent failure) to
-                // avoid hammering the system, but never give up on them permanently.
-                if (SystemClock.elapsedRealtime() < (restartCooldownUntil[pkg] ?: 0L)) {
+                val now = SystemClock.elapsedRealtime()
+                // Skip packages currently in a restart cooldown (recent failure or
+                // restart that the system immediately killed again) to avoid hammering
+                // the system; cooldowns always expire so nothing is blocked forever.
+                if (now < (restartCooldownUntil[pkg] ?: 0L)) {
                     continue
                 }
+
+                // If we restarted this package recently but it vanished again within the
+                // stability window, the system is aggressively killing it (typical on
+                // vendor ROMs). Back off for a while instead of restarting in a loop.
+                val lastRestart = lastRestartTime[pkg] ?: 0L
+                if (now - lastRestart < STABILITY_WINDOW_MS) {
+                    restartCooldownUntil[pkg] = now + UNSTABLE_BACKOFF_MS
+                    Log.w(
+                        TAG,
+                        "$packageName was killed right after restart, backing off " +
+                            "${UNSTABLE_BACKOFF_MS / 1000}s"
+                    )
+                    continue
+                }
+
                 val ok = restartApp(pkg)
                 if (ok) {
+                    lastRestartTime[pkg] = now
                     restartCooldownUntil.remove(pkg)
                 } else {
-                    restartCooldownUntil[pkg] = SystemClock.elapsedRealtime() + RESTART_COOLDOWN_MS
+                    restartCooldownUntil[pkg] = now + RESTART_COOLDOWN_MS
                 }
             }
         }
@@ -189,6 +210,10 @@ class KeepAliveAccessibilityService : AccessibilityService() {
         private const val MIN_CHECK_GAP_MS = 5_000L
         // Cooldown after a failed restart before we try the same package again.
         private const val RESTART_COOLDOWN_MS = 5 * 60_000L
+        // If a restarted package vanishes again within this window, assume the system
+        // is aggressively killing it and back off for UNSTABLE_BACKOFF_MS.
+        private const val STABILITY_WINDOW_MS = 2 * 60_000L
+        private const val UNSTABLE_BACKOFF_MS = 10 * 60_000L
 
         /**
          * Convenience helper to check whether the accessibility service is enabled in
