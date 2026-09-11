@@ -139,12 +139,10 @@ class KeepAliveAccessibilityService : AccessibilityService() {
     private fun getRunningPackages(): Set<String> {
         val am = getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager ?: return emptySet()
         val processes = am.runningAppProcesses ?: return emptySet()
-        // Treat cached processes as dead: they are just a leftover shell scheduled for
-        // reaping, so they should not prevent the keep-alive from restarting the app.
-        return processes
-            .filter { it.importance < ActivityManager.RunningAppProcessInfo.IMPORTANCE_CACHED }
-            .mapNotNull { it.processName?.substringBefore(':') }
-            .toSet()
+        // IMPORTANT: do not filter by process importance here. Background-service apps
+        // (Termux, Shizuku, ...) legitimately sit at IMPORTANCE_CACHED while running fine;
+        // treating cached processes as dead would restart them on every poll cycle.
+        return processes.mapNotNull { it.processName?.substringBefore(':') }.toSet()
     }
 
     /**
